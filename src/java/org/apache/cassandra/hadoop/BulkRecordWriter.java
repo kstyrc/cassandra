@@ -28,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.twitter.elephantbird.util.HadoopCompat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,7 @@ import org.apache.thrift.transport.TFramedTransport;
 import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
+import org.apache.hadoop.util.Progressable;
 
 final class BulkRecordWriter extends RecordWriter<ByteBuffer,List<Mutation>>
 implements org.apache.hadoop.mapred.RecordWriter<ByteBuffer,List<Mutation>>
@@ -66,6 +68,7 @@ implements org.apache.hadoop.mapred.RecordWriter<ByteBuffer,List<Mutation>>
     private SSTableLoader loader;
     private File outputdir;
     private Progressable progress;
+    private TaskAttemptContext context;
     private int maxFailures;
 
     private enum CFType
@@ -85,8 +88,7 @@ implements org.apache.hadoop.mapred.RecordWriter<ByteBuffer,List<Mutation>>
 
     BulkRecordWriter(TaskAttemptContext context)
     {
-        this(context.getConfiguration());
-        this.progress = new Progressable(context);
+        this(HadoopCompat.getConfiguration(context));
     }
 
 
@@ -204,7 +206,8 @@ implements org.apache.hadoop.mapred.RecordWriter<ByteBuffer,List<Mutation>>
                         writer.addExpiringColumn(mut.getColumn_or_supercolumn().column.name, mut.getColumn_or_supercolumn().column.value, mut.getColumn_or_supercolumn().column.timestamp, mut.getColumn_or_supercolumn().column.ttl, System.currentTimeMillis() + ((long)(mut.getColumn_or_supercolumn().column.ttl) * 1000));
                 }
             }
-            progress.progress();
+            if (progress != null)
+                progress.progress();
         }
     }
     @Override
@@ -235,7 +238,8 @@ implements org.apache.hadoop.mapred.RecordWriter<ByteBuffer,List<Mutation>>
                 }
                 catch (ExecutionException | TimeoutException te)
                 {
-                    progress.progress();
+                    if (null != progress)
+                        progress.progress();
                 }
                 catch (InterruptedException e)
                 {
